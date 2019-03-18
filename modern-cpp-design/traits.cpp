@@ -1,5 +1,6 @@
 #include <iostream>
 #include <stdexcept>
+#include <mutex>
 
 using namespace std;
 
@@ -108,9 +109,33 @@ struct RefCountedTraits<Widget> {
     }
 };
 
-template<class T>
+/**
+ * Multiple traits for a given type
+ * Adding multithread safe for Widget
+ * We move the multithreaded ref-counting to separate class
+ * A traits class (as opposed to a traits template) is either an instantiation of a traits template, or a separate class that exposes the same interface as a traits template instantiation.
+ */
+class MthRefCountedTrait {
+    static std::mutex _m;
+public:
+    static void Refer(Widget* p) {
+        std::lock_guard<std::mutex> lock(_m);
+        cout << "_locked" << endl;
+        p->AddRef();
+        cout << "_unlocked" << endl;
+    }
+    static void Unrefer(Widget* p) {
+        std::lock_guard<std::mutex> lock(_m);
+        cout << "_locked" << endl;
+        if (p->DelRef() == 0)
+            delete p;
+        cout << "_unlocked" << endl;
+    }
+};
+std::mutex MthRefCountedTrait::_m;
+
+template<class T, class RefTraits = RefCountedTraits<T> >
 struct UsingRefCount {
-    typedef RefCountedTraits<T> RefTraits;
     T* a;
     UsingRefCount() {
         a = new T;
@@ -122,12 +147,21 @@ struct UsingRefCount {
 };
 
 void run_interface_glue_traits() {
+    std::cout << "interface glue with traits" << std::endl;
     UsingRefCount<Widget> a;
     UsingRefCount<RefCounted> b;
+}
+
+void run_multiple_traits() {
+    std::cout << "multiple traits class" << std::endl;
+    UsingRefCount<Widget> a;
+    UsingRefCount<RefCounted> b;
+    UsingRefCount<Widget, MthRefCountedTrait> c;
 }
 
 
 int main() {
     run_interface_glue_traits();
+    run_multiple_traits();
     return 0;
 }
